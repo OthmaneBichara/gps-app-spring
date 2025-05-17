@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS App</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Awesomplete CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/awesomplete/1.1.5/awesomplete.min.css" />
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        form { margin: 20px 0; }
+        /* Style autocomplete */
+        .awesomplete { display: inline-block; position: relative; }
+        .awesomplete > input {
+            padding: 8px;
+            width: 300px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .awesomplete > ul {
+            background: white;
+            border: 1px solid #ddd;
+            width: 300px;
+            border-radius: 0 0 4px 4px;
+            margin-top: -1px;
+        }
+        .awesomplete > ul > li { padding: 8px; cursor: pointer; }
+        .awesomplete > ul > li:hover { background: #f5f5f5; }
+        /* Boutons */
+        #calculateBtn {
+            background: #4CAF50;
+            margin-top: 10px;
+        }
+        #startTripBtn {
+            display: none; /* Caché par défaut */
+            background: #2196F3;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            margin-top: 10px;
+            cursor: pointer;
+            width: 100%;
+        }
+        button {
+            padding: 8px 15px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        /* Spinner */
+        #spinner {
+            display: none;
+            border: 3px solid rgba(76, 175, 80, 0.2);
+            border-top: 3px solid #4CAF50;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Cartes */
+        #miniMap, #navigationMap {
+            height: 300px;
+            margin: 15px 0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            display: none;
+        }
+        /* Conteneur flex */
+        .input-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .form-actions {
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+<h1>Entrez votre destination</h1>
+<form th:action="@{/calculate}" th:object="${destination}" method="post">
+    <input type="hidden" id="startCoords" name="startCoords">
+    <input type="hidden" id="destinationCoords" name="destinationCoords">
+
+    <div class="input-container">
+        <div class="awesomplete" style="flex-grow: 1;">
+            <input
+                    type="text"
+                    id="addressInput"
+                    th:field="*{address}"
+                    placeholder="Adresse (ex: Tour Eiffel, Paris)"
+                    autocomplete="off"
+                    required
+            >
+        </div>
+        <div id="spinner"></div>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" id="calculateBtn">Calculer</button>
+        <button type="button" id="startTripBtn">▶ Commencer le trajet</button>
+    </div>
+</form>
+
+<div id="miniMap"></div>
+<div id="navigationMap"></div>
+
+<!-- Scripts JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/awesomplete/1.1.5/awesomplete.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Variables globales
+        let userMarker, routePolyline, watchId;
+        let miniMap = null;
+        let navigationMap = null;
+        const startTripBtn = document.getElementById('startTripBtn');
+        const spinner = document.getElementById('spinner');
+        const addressInput = document.getElementById('addressInput');
+
+        // 1. Géolocalisation initiale
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    const coords = `${position.coords.longitude},${position.coords.latitude}`;
+                    document.getElementById('startCoords').value = coords;
+                    initMiniMap(position.coords);
+                },
+                error => {
+                    console.error("Erreur géoloc :", error);
+                    document.getElementById('startCoords').value = "2.3522,48.8566";
+                    initMiniMap({ latitude: 48.8566, longitude: 2.3522 });
+                }
+            );
+        } else {
+            document.getElementById('startCoords').value = "2.3522,48.8566";
+        }
+
+        // 2. Configuration Autocomplete
+        const awesomplete = new Awesomplete(addressInput, {
+            minChars: 3,
+            maxItems: 5,
+            autoFirst: true
+        });
+
+        // Solution optimisée pour la sélection d'adresse
+        let selectedAddressValid = false;
+
+        addressInput.addEventListener('awesomplete-select', function(e) {
+            selectedAddressValid = true;
+            handleAddressSelection(e.text.value);
+        });
+
+        addressInput.addEventListener('change', function() {
+            if (selectedAddressValid) {
+                handleAddressSelection(this.value);
+                selectedAddressValid = false;
+            }
+        });
+
+        async function handleAddressSelection(address) {
+            if (!address) return;
+
+            spinner.style.display = 'block';
+            startTripBtn.style.display = 'none';
+
+            try {
+                const response = await fetch(
+                    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`
+                );
+                const data = await response.json();
+
+                if (data[0]) {
+                    const destCoords = `${data[0].lon},${data[0].lat}`;
+                    document.getElementById('destinationCoords').value = destCoords;
+
+                    // Affiche définitivement le bouton
+                    startTripBtn.style.display = 'block';
+                    showMiniMap(data[0].lat, data[0].lon);
+                } else {
+                    alert("Adresse introuvable");
+                }
+            } catch (error) {
+                console.error("Erreur:", error);
+            } finally {
+                spinner.style.display = 'none';
+            }
+        }
+
+        // Gestion des suggestions
+        addressInput.addEventListener('input', function() {
+            if (this.value.length < 3) {
+                awesomplete.list = [];
+                return;
+            }
+
+            spinner.style.display = 'block';
+            fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(this.value)}&format=json&limit=5`)
+                .then(response => response.json())
+                .then(data => {
+                    awesomplete.list = data.map(item => item.display_name);
+                })
+                .catch(console.error)
+                .finally(() => spinner.style.display = 'none');
+        });
+
+        // 3. Démarrer la navigation
+        startTripBtn.addEventListener('click', startNavigation);
+
+        function initMiniMap(coords) {
+            miniMap = L.map('miniMap').setView([coords.latitude, coords.longitude], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(miniMap);
+            L.marker([coords.latitude, coords.longitude])
+                .addTo(miniMap)
+                .bindPopup("Vous êtes ici");
+        }
+
+        function showMiniMap(lat, lon) {
+            if (!miniMap) {
+                miniMap = L.map('miniMap').setView([lat, lon], 15);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(miniMap);
+            } else {
+                miniMap.setView([lat, lon], 15);
+            }
+
+            // Clear previous markers
+            miniMap.eachLayer(layer => {
+                if (layer instanceof L.Marker) miniMap.removeLayer(layer);
+            });
+
+            L.marker([lat, lon])
+                .addTo(miniMap)
+                .bindPopup("Destination");
+
+            document.getElementById('miniMap').style.display = 'block';
+        }
+
+        function startNavigation() {
+            // Cache la mini-carte, affiche la carte de navigation
+            document.getElementById('miniMap').style.display = 'none';
+            document.getElementById('navigationMap').style.display = 'block';
+            startTripBtn.style.display = 'none';
+
+            // Initialise la carte de navigation
+            navigationMap = L.map('navigationMap');
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(navigationMap);
+
+            // Suivi en temps réel
+            watchId = navigator.geolocation.watchPosition(
+                position => {
+                    const userPos = [position.coords.latitude, position.coords.longitude];
+
+                    if (userMarker) {
+                        userMarker.setLatLng(userPos);
+                    } else {
+                        userMarker = L.marker(userPos, {
+                            icon: L.divIcon({
+                                className: 'user-icon',
+                                html: '📍',
+                                iconSize: [30, 30]
+                            })
+                        }).addTo(navigationMap);
+                    }
+
+                    navigationMap.setView(userPos, 16);
+                },
+                error => console.error("Erreur suivi:", error),
+                { enableHighAccuracy: true, maximumAge: 10000 }
+            );
+        }
+
+        // Nettoyage
+        window.addEventListener('beforeunload', () => {
+            if (watchId) navigator.geolocation.clearWatch(watchId);
+        });
+    });
+
+    async function calculateAndDisplayRoute(startCoords, destCoords) {
+        try {
+            const response = await fetch(`/calculateRoute?start=${startCoords}&end=${destCoords}`);
+            const data = await response.json();
+
+            if (data.routeGeometry) {
+                const routeData = JSON.parse(data.routeGeometry);
+                if (routePolyline) miniMap.removeLayer(routePolyline);
+
+                routePolyline = L.geoJSON(routeData, {
+                    style: { color: '#3388ff', weight: 5 }
+                }).addTo(miniMap);
+
+                miniMap.fitBounds(routePolyline.getBounds());
+            }
+        } catch (error) {
+            console.error("Erreur calcul itinéraire:", error);
+        }
+    }
+</script>
+</body>
+</html>
