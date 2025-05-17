@@ -3,125 +3,282 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS App</title>
+    <title>GPS Navigator | Trouvez votre chemin</title>
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <!-- Awesomplete CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/awesomplete/1.1.5/awesomplete.min.css" />
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        form { margin: 20px 0; }
-        /* Style autocomplete */
-        .awesomplete { display: inline-block; position: relative; }
-        .awesomplete > input {
-            padding: 8px;
-            width: 300px;
-            font-size: 16px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+        :root {
+            --primary: #4361ee;
+            --secondary: #3f37c9;
+            --accent: #4895ef;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --success: #4cc9f0;
         }
-        .awesomplete > ul {
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: var(--dark);
+        }
+
+        .app-header {
+            background: var(--primary);
+            color: white;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .app-title {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .app-subtitle {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+
+        .main-container {
+            max-width: 800px;
+            width: 90%;
+            margin: 2rem auto;
+            padding: 2rem;
             background: white;
-            border: 1px solid #ddd;
-            width: 300px;
-            border-radius: 0 0 4px 4px;
-            margin-top: -1px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
         }
-        .awesomplete > ul > li { padding: 8px; cursor: pointer; }
-        .awesomplete > ul > li:hover { background: #f5f5f5; }
-        /* Boutons */
-        #calculateBtn {
-            background: #4CAF50;
-            margin-top: 10px;
+
+        .search-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.05);
         }
-        #startTripBtn {
-            display: none; /* Caché par défaut */
-            background: #2196F3;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            margin-top: 10px;
-            cursor: pointer;
+
+        .search-title {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .search-title i {
+            color: var(--accent);
+        }
+
+        .awesomplete {
             width: 100%;
+            position: relative;
         }
-        button {
-            padding: 8px 15px;
-            color: white;
+
+        .awesomplete > input {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1rem;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .awesomplete > input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.2);
+            outline: none;
+            background: white;
+        }
+
+        .awesomplete > ul {
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
+            margin-top: 0.5rem;
         }
-        /* Spinner */
+
+        .awesomplete > ul > li {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #f1f3f5;
+        }
+
+        .awesomplete > ul > li:hover {
+            background: #f8f9fa;
+            color: var(--primary);
+        }
+
+        .input-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
         #spinner {
-            display: none;
-            border: 3px solid rgba(76, 175, 80, 0.2);
-            border-top: 3px solid #4CAF50;
+            border: 3px solid rgba(67, 97, 238, 0.2);
+            border-top: 3px solid var(--primary);
             border-radius: 50%;
-            width: 20px;
-            height: 20px;
+            width: 24px;
+            height: 24px;
             animation: spin 1s linear infinite;
-            margin-left: 10px;
-            vertical-align: middle;
         }
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        /* Cartes */
-        #miniMap, #navigationMap {
-            height: 300px;
-            margin: 15px 0;
-            border: 1px solid #ddd;
+
+        .btn {
+            padding: 1rem 1.5rem;
+            border: none;
             border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--secondary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(67, 97, 238, 0.3);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: var(--dark);
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+        }
+
+        #startTripBtn {
+            display: none;
+            width: 100%;
+            margin-top: 1rem;
+            background: var(--accent);
+        }
+
+        #startTripBtn:hover {
+            background: #3a7bd5;
+        }
+
+        .map-container {
+            margin-top: 2rem;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+            height: 300px;
             display: none;
         }
-        /* Conteneur flex */
-        .input-container {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 15px;
+
+        #miniMap, #navigationMap {
+            height: 100%;
+            width: 100%;
         }
-        .form-actions {
-            display: flex;
-            flex-direction: column;
+
+        .footer {
+            text-align: center;
+            padding: 1.5rem;
+            margin-top: auto;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .main-container {
+                padding: 1.5rem;
+                width: 95%;
+            }
+
+            .app-title {
+                font-size: 1.5rem;
+            }
         }
     </style>
 </head>
 <body>
-<h1>Entrez votre destination</h1>
-<form th:action="@{/calculate}" th:object="${destination}" method="post">
-    <input type="hidden" id="startCoords" name="startCoords">
-    <input type="hidden" id="destinationCoords" name="destinationCoords">
+<header class="app-header">
+    <h1 class="app-title"><i class="fas fa-map-marked-alt"></i> GPS Navigator</h1>
+    <p class="app-subtitle">Trouvez le meilleur itinéraire</p>
+</header>
 
-    <div class="input-container">
-        <div class="awesomplete" style="flex-grow: 1;">
-            <input
-                    type="text"
-                    id="addressInput"
-                    th:field="*{address}"
-                    placeholder="Adresse (ex: Tour Eiffel, Paris)"
-                    autocomplete="off"
-                    required
-            >
-        </div>
-        <div id="spinner"></div>
+<main class="main-container">
+    <div class="search-card">
+        <h2 class="search-title"><i class="fas fa-search-location"></i> Entrez votre destination</h2>
+
+        <form th:action="@{/calculate}" th:object="${destination}" method="post">
+            <input type="hidden" id="startCoords" name="startCoords">
+            <input type="hidden" id="destinationCoords" name="destinationCoords">
+
+            <div class="input-container">
+                <div class="awesomplete" style="flex-grow: 1;">
+                    <input
+                            type="text"
+                            id="addressInput"
+                            th:field="*{address}"
+                            placeholder="Ex: Tour Eiffel, Paris"
+                            autocomplete="off"
+                            required
+                    >
+                </div>
+                <div id="spinner"></div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" id="calculateBtn" class="btn btn-primary">
+                    <i class="fas fa-route"></i> Calculer l'itinéraire
+                </button>
+                <button type="button" id="startTripBtn" class="btn">
+                    <i class="fas fa-play"></i> Commencer la navigation
+                </button>
+            </div>
+        </form>
     </div>
 
-    <div class="form-actions">
-        <button type="submit" id="calculateBtn">Calculer</button>
-        <button type="button" id="startTripBtn">▶ Commencer le trajet</button>
+    <div class="map-container">
+        <div id="miniMap"></div>
+        <div id="navigationMap"></div>
     </div>
-</form>
+</main>
 
-<div id="miniMap"></div>
-<div id="navigationMap"></div>
+<footer class="footer">
+    <p>© 2023 GPS Navigator | Développé avec <i class="fas fa-heart" style="color: #e63946;"></i></p>
+</footer>
 
 <!-- Scripts JS -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/awesomplete/1.1.5/awesomplete.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+
+<!-- Votre script JavaScript existant reste inchangé ici -->
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         // Variables globales
@@ -142,8 +299,9 @@
                 },
                 error => {
                     console.error("Erreur géoloc :", error);
-                    document.getElementById('startCoords').value = "2.3522,48.8566";
-                    initMiniMap({ latitude: 48.8566, longitude: 2.3522 });
+                    // Ne pas définir de position par défaut
+                    alert("Impossible d'obtenir votre position. Veuillez activer le GPS.");
+                    return;
                 }
             );
         } else {
@@ -281,5 +439,6 @@
         }
     }
 </script>
+
 </body>
 </html>
