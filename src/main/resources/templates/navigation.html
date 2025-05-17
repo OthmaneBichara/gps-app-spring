@@ -4,10 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Navigation</title>
-    <!-- Leaflet CSS/JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Ajout de Leaflet.RotatedMarker pour la rotation -->
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.rotatedmarker@0.2.0/leaflet.rotatedMarker.min.js"></script>
     <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
         #navigationMap {
             height: 100vh;
             width: 100vw;
@@ -20,49 +21,126 @@
             top: 20px;
             left: 20px;
             z-index: 1000;
+            background: white;
+            padding: 10px 15px;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            text-decoration: none;
+            color: #333;
+            font-weight: bold;
+        }
+        .car-icon {
+            background: #3388ff;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+            transform: rotate(0deg);
+        }
+        .car-arrow {
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-bottom: 12px solid white;
+            position: absolute;
+            top: -8px;
+            left: 9px;
         }
     </style>
 </head>
 <body>
-<a href="/" class="btn back-btn">← Retour</a>
+<a href="/" class="back-btn">← Retour</a>
 <div id="navigationMap"></div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script th:inline="javascript">
     /*<![CDATA[*/
     const routeGeometry = /*[[${destination.routeGeometry}]]*/ null;
 
-    // Initialisation de la carte
-    const map = L.map('navigationMap').setView([0, 0], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    let map, userMarker, watchId;
+    let lastPosition = null;
 
-    // Ajouter le trajet
-    if (routeGeometry) {
-        const route = L.geoJSON(JSON.parse(routeGeometry), {
-            style: { color: 'blue', weight: 5 }
-        }).addTo(map);
-        map.fitBounds(route.getBounds());
+    function initMap() {
+        // Initialisation avec vue inclinée (zoom + angle)
+        map = L.map('navigationMap', {
+            zoomControl: false,
+            inertia: true,
+            zoomSnap: 0.1
+        }).setView([0, 0], 18); // Zoom élevé pour effet 3ème personne
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        // Ajout du trajet
+        if (routeGeometry) {
+            const route = L.geoJSON(JSON.parse(routeGeometry), {
+                style: { color: '#3388ff', weight: 6 }
+            }).addTo(map);
+            map.fitBounds(route.getBounds());
+        }
+
+        // Démarrer le suivi immédiat
+        startTracking();
     }
 
-    // Suivi en temps réel
-    let userMarker;
-    navigator.geolocation.watchPosition(
-        position => {
-            const pos = [position.coords.latitude, position.coords.longitude];
-            if (!userMarker) {
-                userMarker = L.marker(pos, {
-                    icon: L.divIcon({
-                        html: '📍',
-                        iconSize: [30, 30]
-                    })
-                }).addTo(map);
-            } else {
-                userMarker.setLatLng(pos);
-            }
-            map.setView(pos, 18);
-        },
-        error => console.error(error),
-        { enableHighAccuracy: true }
-    );
+    function startTracking() {
+        if (watchId) navigator.geolocation.clearWatch(watchId);
+
+        watchId = navigator.geolocation.watchPosition(
+            position => {
+                const userPos = [position.coords.latitude, position.coords.longitude];
+
+                if (!userMarker) {
+                    // Création du marqueur orientable
+                    userMarker = L.marker(userPos, {
+                        icon: L.divIcon({
+                            className: 'car-icon',
+                            html: '<div class="car-arrow"></div>',
+                            iconSize: [30, 30],
+                            iconAnchor: [15, 15]
+                        })
+                    }).addTo(map);
+
+                    // Transition immédiate en vue 3ème personne
+                    map.setView(userPos, 18, {
+                        animate: true,
+                        duration: 0.5,
+                        easeLinearity: 0.1
+                    });
+                } else {
+                    userMarker.setLatLng(userPos);
+                }
+
+                // Rotation du marqueur selon la direction
+                if (lastPosition) {
+                    const bearing = calculateBearing(lastPosition, userPos);
+                    userMarker.setRotationAngle(bearing);
+
+                    // Maintien de la vue rapprochée
+                    map.setView(userPos, 18, {
+                        animate: true,
+                        duration: 1,
+                        easeLinearity: 0.25
+                    });
+                }
+
+                lastPosition = userPos;
+            },
+            error => console.error("Erreur GPS:", error),
+            { enableHighAccuracy: true }
+        );
+    }
+
+    function calculateBearing(from, to) {
+        const φ1 = from[0] * Math.PI/180;
+        const φ2 = to[0] * Math.PI/180;
+        const Δλ = (to[1]-from[1]) * Math.PI/180;
+
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x = Math.cos(φ1)*Math.sin(φ2) - Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
+        return Math.atan2(y, x) * 180/Math.PI;
+    }
+
+    document.addEventListener('DOMContentLoaded', initMap);
     /*]]>*/
 </script>
 </body>

@@ -39,18 +39,20 @@ public class NavigationController {
             String endCoords = geocodeAddress(destination.getAddress());
             if (endCoords == null) {
                 destination.setEstimatedTime("Adresse introuvable");
+                model.addAttribute("showStartButton", false);  // <-- Ajouté
                 model.addAttribute("destination", destination);
                 return "result";
             }
 
-
             String startCoords = destination.getStartCoords();
-
             calculateRouteInfo(startCoords, endCoords, destination);
+
+            // 2. Toujours montrer le bouton si l'adresse est valide
+            model.addAttribute("showStartButton", true);  // <-- Ajouté
 
         } catch (Exception e) {
             destination.setEstimatedTime("Erreur lors du calcul");
-            e.printStackTrace();
+            model.addAttribute("showStartButton", false);  // <-- Ajouté
         }
 
         model.addAttribute("destination", destination);
@@ -109,5 +111,17 @@ public class NavigationController {
                 (meters/1000) + " km" : meters + " m";
         destination.setDistance(distance);
         destination.setEndCoords(end);
+    }
+
+    @GetMapping("/start-navigation")
+    public String startNavigation(
+            @RequestParam String start,
+            @RequestParam String end,
+            Model model) throws Exception {
+
+        Destination destination = new Destination();
+        calculateRouteInfo(start, end, destination);
+        model.addAttribute("destination", destination);
+        return "navigation"; // Assurez-vous d'avoir navigation.html dans templates/
     }
 }

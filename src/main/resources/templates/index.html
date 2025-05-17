@@ -250,37 +250,9 @@
         }
 
         function startNavigation() {
-            // Cache la mini-carte, affiche la carte de navigation
-            document.getElementById('miniMap').style.display = 'none';
-            document.getElementById('navigationMap').style.display = 'block';
-            startTripBtn.style.display = 'none';
-
-            // Initialise la carte de navigation
-            navigationMap = L.map('navigationMap');
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(navigationMap);
-
-            // Suivi en temps réel
-            watchId = navigator.geolocation.watchPosition(
-                position => {
-                    const userPos = [position.coords.latitude, position.coords.longitude];
-
-                    if (userMarker) {
-                        userMarker.setLatLng(userPos);
-                    } else {
-                        userMarker = L.marker(userPos, {
-                            icon: L.divIcon({
-                                className: 'user-icon',
-                                html: '📍',
-                                iconSize: [30, 30]
-                            })
-                        }).addTo(navigationMap);
-                    }
-
-                    navigationMap.setView(userPos, 16);
-                },
-                error => console.error("Erreur suivi:", error),
-                { enableHighAccuracy: true, maximumAge: 10000 }
-            );
+            const startCoords = document.getElementById('startCoords').value;
+            const destCoords = document.getElementById('destinationCoords').value;
+            window.location.href = `/start-navigation?start=${encodeURIComponent(startCoords)}&end=${encodeURIComponent(destCoords)}`;
         }
 
         // Nettoyage
