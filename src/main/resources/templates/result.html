@@ -3,100 +3,219 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Résultat</title>
-    <!-- Leaflet CSS/JS -->
+    <title>Itinéraire Calculé | GPS Navigator</title>
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        :root {
+            --primary: #4361ee;
+            --secondary: #3f37c9;
+            --accent: #4895ef;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --success: #4cc9f0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            color: var(--dark);
         }
-        #map {
-            height: 500px;
-            margin: 20px 0;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
+
         .result-container {
-            background: #f9f9f9;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        .result-item {
-            margin: 10px 0;
-            padding: 8px;
+            max-width: 900px;
+            width: 95%;
+            margin: 2rem auto;
             background: white;
-            border-radius: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-radius: 16px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
         }
-        .btn {
-            display: inline-block;
-            padding: 10px 20px;
-            background: #2196F3;
+
+        .result-header {
+            background: var(--primary);
             color: white;
-            text-decoration: none;
-            border-radius: 4px;
-            font-weight: bold;
-            transition: background 0.3s;
+            padding: 1.5rem;
+            text-align: center;
         }
-        .btn:hover {
-            background: #0b7dda;
+
+        .result-title {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
         }
-        .info-label {
-            font-weight: bold;
-            color: #555;
-            display: inline-block;
-            width: 100px;
+
+        .result-content {
+            padding: 2rem;
+        }
+
+        .route-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .route-card {
+            background: var(--light);
+            border-radius: 10px;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+        .card-icon {
+            font-size: 2rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+        }
+
+        .card-title {
+            font-size: 0.9rem;
+            color: #6c757d;
+            margin-bottom: 0.5rem;
+        }
+
+        .card-value {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: var(--dark);
+        }
+
+        #map {
+            height: 400px;
+            width: 100%;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+            border: 1px solid #e9ecef;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.8rem;
+            min-width: 220px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--secondary);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(67, 97, 238, 0.3);
+        }
+
+        .btn-outline {
+            background: white;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+        }
+
+        .btn-outline:hover {
+            background: #f0f4ff;
+        }
+
+        .leaflet-popup-content {
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        @media (max-width: 768px) {
+            .result-content {
+                padding: 1.5rem;
+            }
+
+            .route-summary {
+                grid-template-columns: 1fr;
+            }
+
+            .btn {
+                width: 100%;
+            }
         }
     </style>
 </head>
 <body>
-<h1>Itinéraire calculé</h1>
-
 <div class="result-container">
-    <div class="result-item">
-        <span class="info-label">Destination :</span>
-        <span th:text="${destination.address}"></span>
+    <div class="result-header">
+        <h1 class="result-title"><i class="fas fa-check-circle"></i> Itinéraire Prêt</h1>
     </div>
-    <div class="result-item">
-        <span class="info-label">Durée :</span>
-        <span th:text="${destination.estimatedTime}"></span>
-    </div>
-    <div class="result-item">
-        <span class="info-label">Distance :</span>
-        <span th:text="${destination.distance}"></span>
+
+    <div class="result-content">
+        <div class="route-summary">
+            <div class="route-card">
+                <div class="card-icon"><i class="fas fa-map-marker-alt"></i></div>
+                <div class="card-title">Destination</div>
+                <div class="card-value" th:text="${destination.address}">Tour Eiffel</div>
+            </div>
+
+            <div class="route-card">
+                <div class="card-icon"><i class="fas fa-clock"></i></div>
+                <div class="card-title">Durée</div>
+                <div class="card-value" th:text="${destination.estimatedTime}">25 min</div>
+            </div>
+
+            <div class="route-card">
+                <div class="card-icon"><i class="fas fa-road"></i></div>
+                <div class="card-title">Distance</div>
+                <div class="card-value" th:text="${destination.distance}">8.5 km</div>
+            </div>
+        </div>
+
+        <div id="map"></div>
+
+        <div class="action-buttons">
+            <a href="/" class="btn btn-outline">
+                <i class="fas fa-search"></i> Nouvelle recherche
+            </a>
+
+            <button th:if="${showStartButton}" id="startTripBtn" class="btn btn-primary">
+                <i class="fas fa-play"></i> Commencer la navigation
+            </button>
+        </div>
     </div>
 </div>
 
-<div id="map"></div> <!-- J'ai ajouté cette div pour la carte -->
-
-<div class="form-actions">
-    <a href="/" class="btn">Nouvelle recherche</a>
-    <button th:if="${showStartButton}"
-            id="startTripBtn"
-            class="btn start-btn"
-            onclick="startNavigation()">
-        ▶ Commencer le trajet
-    </button>
-</div>
+<!-- Scripts JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
 
 <script th:inline="javascript">
     /*<![CDATA[*/
-    // Déclarez ces variables en global pour startNavigation()
     const startCoords = /*[[${destination.startCoords}]]*/ "2.3522,48.8566";
     const endCoords = /*[[${destination.endCoords}]]*/ "2.2945,48.8584";
+    const routeGeometry = /*[[${destination.routeGeometry}]]*/ null;
+    const destinationAddress = /*[[${destination.address}]]*/ "Destination";
 
     document.addEventListener('DOMContentLoaded', function() {
-        // Récupération des données depuis Thymeleaf
-        const routeGeometry = /*[[${destination.routeGeometry}]]*/ null;
-        const destinationAddress = /*[[${destination.address}]]*/ "Destination";
-
         // Conversion des coordonnées
         const parseCoords = (coordsStr) => {
             const [lon, lat] = coordsStr.split(',').map(Number);
@@ -105,23 +224,23 @@
 
         // Initialisation de la carte
         const map = L.map('map').setView(parseCoords(startCoords), 13);
-
-        // Couche OpenStreetMap
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         }).addTo(map);
 
         // Icônes personnalisées
         const startIcon = L.divIcon({
-            className: 'start-icon',
-            html: '🟢',
-            iconSize: [30, 30]
+            className: 'map-icon',
+            html: '<div class="icon-circle" style="background:#4CAF50;"><i class="fas fa-user"></i></div>',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16]
         });
 
         const endIcon = L.divIcon({
-            className: 'end-icon',
-            html: '🔴',
-            iconSize: [30, 30]
+            className: 'map-icon',
+            html: '<div class="icon-circle" style="background:#F44336;"><i class="fas fa-flag"></i></div>',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16]
         });
 
         // Marqueurs
@@ -138,52 +257,56 @@
             try {
                 const routeData = JSON.parse(routeGeometry);
 
-                // Style du trajet
-                const routeStyle = {
-                    color: '#3388ff',
-                    weight: 6,
-                    opacity: 0.8,
-                    dashArray: '5, 5'
-                };
-
-                // Affichage du trajet GeoJSON
                 const routeLayer = L.geoJSON(routeData, {
-                    style: routeStyle
+                    style: {
+                        color: '#4361ee',
+                        weight: 5,
+                        opacity: 0.9,
+                        dashArray: '8, 8'
+                    }
                 }).addTo(map);
 
-                // Ajustement de la vue
                 map.fitBounds(routeLayer.getBounds());
-
-                // Animation du trajet (optionnel)
-                routeLayer.eachLayer(layer => {
-                    if (layer instanceof L.Polyline) {
-                        layer.bringToFront();
-                    }
-                });
-
             } catch (e) {
                 console.error("Erreur parsing GeoJSON:", e);
-                // Fallback: ligne droite si problème avec le GeoJSON
+                // Fallback
                 L.polyline(
                     [parseCoords(startCoords), parseCoords(endCoords)],
-                    {color: 'red', weight: 3, dashArray: '10, 10'}
+                    {color: '#4361ee', weight: 3}
                 ).addTo(map);
-                map.fitBounds([parseCoords(startCoords), parseCoords(endCoords)]);
             }
         } else {
-            // Fallback si pas de géométrie
             L.polyline(
                 [parseCoords(startCoords), parseCoords(endCoords)],
-                {color: 'red', weight: 3, dashArray: '10, 10'}
+                {color: '#4361ee', weight: 3}
             ).addTo(map);
-            map.fitBounds([parseCoords(startCoords), parseCoords(endCoords)]);
         }
+
+        // Bouton navigation
+        document.getElementById('startTripBtn')?.addEventListener('click', function() {
+            window.location.href = `/start-navigation?start=${encodeURIComponent(startCoords)}&end=${encodeURIComponent(endCoords)}`;
+        });
     });
 
-    function startNavigation() {
-        // Rediriger vers la page d'accueil avec paramètres
-        window.location.href = `/start-navigation?start=${encodeURIComponent(startCoords)}&end=${encodeURIComponent(endCoords)}`;
-    }
+    /* Style dynamique pour les icônes */
+    const style = document.createElement('style');
+    style.textContent = `
+            .map-icon .icon-circle {
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            }
+            .leaflet-popup-content {
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 14px;
+            }
+        `;
+    document.head.appendChild(style);
     /*]]>*/
 </script>
 </body>
