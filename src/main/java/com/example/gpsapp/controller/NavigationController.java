@@ -35,7 +35,7 @@ public class NavigationController {
         try {
             System.out.println("Début du calcul pour: " + destination.getAddress());
 
-            // 1. Géocodage
+            // convertissage de l'adresse en coordonées GPS
             String endCoords = geocodeAddress(destination.getAddress());
             if (endCoords == null) {
                 destination.setEstimatedTime("Adresse introuvable");
@@ -47,7 +47,7 @@ public class NavigationController {
             String startCoords = destination.getStartCoords();
             calculateRouteInfo(startCoords, endCoords, destination);
 
-            // 2. Toujours montrer le bouton si l'adresse est valide
+            //  Toujours montrer le bouton si l'adresse est valide
             model.addAttribute("showStartButton", true);  // <-- Ajouté
 
         } catch (Exception e) {
@@ -58,7 +58,7 @@ public class NavigationController {
         model.addAttribute("destination", destination);
         return "result";
     }
-
+// géocodage de l'adresse grace à l'API NOMNATIM
     private String geocodeAddress(String address) throws Exception {
         String encodedAddress = URLEncoder.encode(address, StandardCharsets.UTF_8);
         String url = "https://nominatim.openstreetmap.org/search?q=" + encodedAddress
@@ -87,6 +87,7 @@ public class NavigationController {
         return lon + "," + lat;
     }
 
+    //calcul entrz deux itinéraires grace à l' API OSRM
     private void calculateRouteInfo(String start, String end, Destination destination) throws Exception {
         String url = "https://router.project-osrm.org/route/v1/driving/"
                 + start + ";" + end + "?overview=full&geometries=geojson";
@@ -112,7 +113,7 @@ public class NavigationController {
         destination.setDistance(distance);
         destination.setEndCoords(end);
     }
-
+//lancement de la navigation 
     @GetMapping("/start-navigation")
     public String startNavigation(
             @RequestParam String start,
@@ -122,6 +123,6 @@ public class NavigationController {
         Destination destination = new Destination();
         calculateRouteInfo(start, end, destination);
         model.addAttribute("destination", destination);
-        return "navigation"; // Assurez-vous d'avoir navigation.html dans templates/
+        return "navigation";
     }
 }

@@ -1,7 +1,7 @@
 package com.example.gpsapp.model;
 import lombok.Data;
 
-@Data // Lombok génère les getters/setters
+@Data
 public class Destination {
     private String address;
     private String estimatedTime;
