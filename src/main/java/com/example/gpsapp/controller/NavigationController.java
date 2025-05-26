@@ -1,27 +1,36 @@
 package com.example.gpsapp.controller;
 
 import com.example.gpsapp.model.Destination;
+import com.example.gpsapp.model.Poi;
+import com.example.gpsapp.repository.PoiRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.http.HttpMethod;
+import org.springframework.http.*;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpEntity;
+
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Controller
 public class NavigationController {
 
+    private final PoiRepository poiRepository;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    public NavigationController() {
-        this.restTemplate = new RestTemplate();
-        this.objectMapper = new ObjectMapper();
+    // Injection via constructeur (meilleure pratique)
+    public NavigationController(PoiRepository poiRepository,
+                                RestTemplate restTemplate,
+                                ObjectMapper objectMapper) {
+        this.poiRepository = poiRepository;
+        this.restTemplate = restTemplate;
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping("/")
@@ -35,7 +44,7 @@ public class NavigationController {
         try {
             System.out.println("Début du calcul pour: " + destination.getAddress());
 
-            // convertissage de l'adresse en coordonées GPS
+            // 1. Géocodage
             String endCoords = geocodeAddress(destination.getAddress());
             if (endCoords == null) {
                 destination.setEstimatedTime("Adresse introuvable");
@@ -47,7 +56,7 @@ public class NavigationController {
             String startCoords = destination.getStartCoords();
             calculateRouteInfo(startCoords, endCoords, destination);
 
-            //  Toujours montrer le bouton si l'adresse est valide
+            // 2. Toujours montrer le bouton si l'adresse est valide
             model.addAttribute("showStartButton", true);  // <-- Ajouté
 
         } catch (Exception e) {
@@ -58,7 +67,7 @@ public class NavigationController {
         model.addAttribute("destination", destination);
         return "result";
     }
-// géocodage de l'adresse grace à l'API NOMNATIM
+
     private String geocodeAddress(String address) throws Exception {
         String encodedAddress = URLEncoder.encode(address, StandardCharsets.UTF_8);
         String url = "https://nominatim.openstreetmap.org/search?q=" + encodedAddress
@@ -87,7 +96,6 @@ public class NavigationController {
         return lon + "," + lat;
     }
 
-    //calcul entrz deux itinéraires grace à l' API OSRM
     private void calculateRouteInfo(String start, String end, Destination destination) throws Exception {
         String url = "https://router.project-osrm.org/route/v1/driving/"
                 + start + ";" + end + "?overview=full&geometries=geojson";
@@ -113,7 +121,7 @@ public class NavigationController {
         destination.setDistance(distance);
         destination.setEndCoords(end);
     }
-//lancement de la navigation 
+
     @GetMapping("/start-navigation")
     public String startNavigation(
             @RequestParam String start,
@@ -123,6 +131,53 @@ public class NavigationController {
         Destination destination = new Destination();
         calculateRouteInfo(start, end, destination);
         model.addAttribute("destination", destination);
-        return "navigation";
+        return "navigation"; // Assurez-vous d'avoir navigation.html dans templates/
     }
+
+
+    @GetMapping("/pois")
+    @ResponseBody
+    public List<Poi> getAllPois() {
+        return poiRepository.findAll();
+    }
+
+    @PostMapping("/pois")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> addPoi(@RequestBody Map<String, Object> poiData) {
+        try {
+            Poi poi = new Poi();
+            poi.setType((String) poiData.get("type"));
+            poi.setLatitude(Double.parseDouble(poiData.get("latitude").toString()));
+            poi.setLongitude(Double.parseDouble(poiData.get("longitude").toString()));
+
+            Poi savedPoi = poiRepository.save(poi);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "success");
+            response.put("data", savedPoi);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(Map.of("status", "error", "message", e.getMessage()));
+        }
+
+    }
+    @DeleteMapping("/pois/{id}")
+    @ResponseBody
+    public ResponseEntity<String> deletePoi(@PathVariable Long id) {
+        try {
+            if (!poiRepository.existsById(id)) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body("POI non trouvé");
+            }
+            poiRepository.deleteById(id);
+            return ResponseEntity.ok("POI supprimé");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Erreur: " + e.getMessage());
+        }
+    }
+
+
 }

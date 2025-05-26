@@ -36,16 +36,64 @@
             box-shadow: 0 0 5px rgba(0,0,0,0.5);
             transform: rotate(0deg);
         }
-        .car-arrow {
-            width: 0;
-            height: 0;
-            border-left: 6px solid transparent;
-            border-right: 6px solid transparent;
-            border-bottom: 12px solid white;
-            position: absolute;
-            top: -8px;
-            left: 9px;
+        .poi-notifications-container {
+            opacity: 0;
+            transition: opacity 0.3s ease;
         }
+       
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .poi-icon {
+            cursor: pointer;
+            filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));
+        }
+        .poi-notification {
+            background: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 220px;
+            border-left: 4px solid;
+            transform: translateX(0);
+            animation: slideIn 0.3s ease-out;
+        }
+        .poi-notification.visible {
+            transform: translateX(0);
+        }
+
+        .poi-notification.magasin {
+            border-left-color: #4CAF50;
+        }
+
+        .poi-notification.radar {
+            border-left-color: #F44336;
+        }
+
+        .poi-notification.lieu {
+            border-left-color: #FFC107;
+        }
+
+        .poi-icon {
+            font-size: 24px;
+        }
+
+        .notification-content {
+            display: flex;
+            flex-direction: column;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+
     </style>
 </head>
 <body>
@@ -57,8 +105,140 @@
     /*<![CDATA[*/
     const routeGeometry = /*[[${destination.routeGeometry}]]*/ null;
 
+    // Variables globales
     let map, userMarker, watchId;
     let lastPosition = null;
+    let poisData = [];
+    let notifiedPois = new Set();
+
+    function showNotification(pois) {
+
+        document.querySelectorAll('.poi-notification').forEach(el => el.remove());
+
+        // Crée un conteneur pour toutes les notifications
+        const container = document.createElement('div');
+        container.className = 'poi-notifications-container';
+        container.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 1000;
+    `;
+
+        // Ajoute une notification pour chaque POI proche
+        pois.forEach(({poi, distance}) => {
+            const notification = document.createElement('div');
+            notification.className = `poi-notification ${poi.type.toLowerCase()}`;
+
+            const icon = poi.type === 'MAGASIN' ? '🛒' :
+                poi.type === 'RADAR' ? '🚨' : '📍';
+
+            notification.innerHTML = `
+            <span class="poi-icon">${icon}</span>
+            <div class="notification-content">
+                <strong>${poi.type} proche</strong>
+                <span>${distance.toFixed(2)} km</span>
+            </div>
+        `;
+            container.appendChild(notification);
+        });
+
+        document.body.appendChild(container);
+
+        // Animation d'apparition
+        setTimeout(() => {
+            container.style.opacity = '1';
+        }, 100);
+
+
+        setTimeout(() => {
+            container.style.opacity = '0';
+            setTimeout(() => container.remove(), 300);
+        }, 8000);
+    }
+
+    // Fonction pour charger les POIs
+    async function loadPois() {
+        try {
+            const response = await fetch('/pois');
+            if (!response.ok) throw new Error('Erreur réseau');
+
+            poisData = await response.json();
+
+            poisData.forEach(poi => {
+                const icon = L.divIcon({
+                    className: 'poi-icon',
+                    html: `<div style="background:${
+                        poi.type === 'MAGASIN' ? '#4CAF50' :
+                            poi.type === 'RADAR' ? '#F44336' : '#FFC107'
+                    }; width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;border:2px solid white;box-shadow:0 0 5px rgba(0,0,0,0.3)">
+                        ${poi.type === 'MAGASIN' ? '🛒' : poi.type === 'RADAR' ? '🚨' : '📍'}
+                    </div>`,
+                    iconSize: [24, 24]
+                });
+
+                L.marker([poi.latitude, poi.longitude], { icon })
+                    .addTo(map)
+                    .bindPopup(`<b>${poi.type}</b>`);
+            });
+        } catch (error) {
+            console.error("Erreur chargement POIs:", error);
+        }
+    }
+
+    function checkProximity(currentPos) {
+        const R = 6371; // Rayon Terre en km
+        const proximityDistance = 2; // 2 km
+        const nearbyPois = [];
+
+        poisData.forEach(poi => {
+            const φ1 = currentPos.latitude * Math.PI/180;
+            const φ2 = poi.latitude * Math.PI/180;
+            const Δφ = (poi.latitude - currentPos.latitude) * Math.PI/180;
+            const Δλ = (poi.longitude - currentPos.longitude) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const distance = R * c;
+
+            if (distance <= proximityDistance) {
+                nearbyPois.push({
+                    poi,
+                    distance
+                });
+            }
+        });
+
+
+        if (nearbyPois.length > 0) {
+            showNotification(nearbyPois); // Affichge de toutes les notifications
+        }
+    }
+
+    function testProximityNotifications() {
+        // Simule une position proche de chaque POI
+        poisData.forEach((poi, index) => {
+            setTimeout(() => {
+                const testPos = {
+                    latitude: poi.latitude + 0.005, // Environ 500m de différence
+                    longitude: poi.longitude + 0.005
+                };
+
+                console.log(`Test notification pour ${poi.type}`);
+                checkProximity(testPos);
+            }, index * 3000); // Test chaque POI toutes les 3 secondes
+        });
+    }
+
+
+
+
+
 
     function initMap() {
         // Initialisation avec vue inclinée (zoom + angle)
@@ -78,7 +258,10 @@
             map.fitBounds(route.getBounds());
         }
 
-        // Démarrer le suivi immédiat
+        // Chargement des POIs
+        loadPois();
+
+
         startTracking();
     }
 
@@ -89,46 +272,100 @@
             position => {
                 const userPos = [position.coords.latitude, position.coords.longitude];
 
+                // 1. Gestion du marqueur
                 if (!userMarker) {
-                    // Création du marqueur orientable
                     userMarker = L.marker(userPos, {
                         icon: L.divIcon({
                             className: 'car-icon',
-                            html: '<div class="car-arrow"></div>',
+                            html: '<div style="transform:rotate(0deg);background:#3388ff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;color:white;border:2px solid white;">➤</div>',
                             iconSize: [30, 30],
                             iconAnchor: [15, 15]
                         })
                     }).addTo(map);
 
-                    // Transition immédiate en vue 3ème personne
-                    map.setView(userPos, 18, {
-                        animate: true,
-                        duration: 0.5,
-                        easeLinearity: 0.1
-                    });
+
+                    map.setView(userPos, 18, { animate: true });
                 } else {
                     userMarker.setLatLng(userPos);
                 }
 
-                // Rotation du marqueur selon la direction
+                // 2. Rotation (optionnelle)
                 if (lastPosition) {
-                    const bearing = calculateBearing(lastPosition, userPos);
-                    userMarker.setRotationAngle(bearing);
-
-                    // Maintien de la vue rapprochée
-                    map.setView(userPos, 18, {
-                        animate: true,
-                        duration: 1,
-                        easeLinearity: 0.25
-                    });
+                    const angle = calculateBearing(lastPosition, userPos);
+                    userMarker.setIcon(L.divIcon({
+                        className: 'car-icon',
+                        html: `<div style="transform:rotate(${angle}deg);background:#3388ff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;color:white;border:2px solid white;">➤</div>`,
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15]
+                    }));
                 }
+
+                // 3. Vérification proximité
+                checkProximity({
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude
+                });
 
                 lastPosition = userPos;
             },
-            error => console.error("Erreur GPS:", error),
-            { enableHighAccuracy: true }
+            error => console.error("GPS Error:", error),
+            { enableHighAccuracy: true, timeout: 10000 }
         );
     }
+
+        function initTracking() {
+            watchId = navigator.geolocation.watchPosition(
+                position => {
+                    const userPos = [position.coords.latitude, position.coords.longitude];
+                    const currentPos = {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude
+                    };
+
+                    if (!userMarker) {
+                        // Créez un marqueur compatible avec la rotation
+                        userMarker = L.marker(userPos, {
+                            rotationAngle: 0, // Initialisation de l'angle
+                            rotationOrigin: 'center', // Point de rotation
+                            icon: L.divIcon({
+                                className: 'car-icon',
+                                html: '<div class="car-arrow"></div>',
+                                iconSize: [30, 30],
+                                iconAnchor: [15, 15]
+                            })
+                        }).addTo(map);
+
+                        map.setView(userPos, 18, {
+                            animate: true,
+                            duration: 0.5,
+                            easeLinearity: 0.1
+                        });
+                    } else {
+                        userMarker.setLatLng(userPos);
+                    }
+
+                    if (lastPosition) {
+                        const bearing = calculateBearing(lastPosition, userPos);
+                        // Vérifiez que la méthode existe avant de l'appeler
+                        if (userMarker.setRotationAngle) {
+                            userMarker.setRotationAngle(bearing);
+                        }
+
+                        map.setView(userPos, 18, {
+                            animate: true,
+                            duration: 1,
+                            easeLinearity: 0.25
+                        });
+                    }
+
+                    checkProximity(currentPos);
+                    lastPosition = userPos;
+                },
+                error => console.error("Erreur GPS:", error),
+                { enableHighAccuracy: true }
+            );
+        }
+
 
     function calculateBearing(from, to) {
         const φ1 = from[0] * Math.PI/180;

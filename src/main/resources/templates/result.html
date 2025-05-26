@@ -161,6 +161,10 @@
                 width: 100%;
             }
         }
+        .poi-icon {
+            cursor: pointer;
+            filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));
+        }
     </style>
 </head>
 <body>
@@ -215,6 +219,37 @@
     const routeGeometry = /*[[${destination.routeGeometry}]]*/ null;
     const destinationAddress = /*[[${destination.address}]]*/ "Destination";
 
+    let map; // Variable globale pour la carte
+
+    // Fonction pour charger les POIs
+    async function loadPois() {
+        try {
+            const response = await fetch('/pois');
+            if (!response.ok) throw new Error('Erreur réseau');
+
+            const pois = await response.json();
+
+            pois.forEach(poi => {
+                const icon = L.divIcon({
+                    className: 'poi-icon',
+                    html: `<div style="background:${
+                        poi.type === 'MAGASIN' ? '#4CAF50' :
+                            poi.type === 'RADAR' ? '#F44336' : '#FFC107'
+                    }; width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;border:2px solid white;box-shadow:0 0 5px rgba(0,0,0,0.3)">
+                        ${poi.type === 'MAGASIN' ? '🛒' : poi.type === 'RADAR' ? '🚨' : '📍'}
+                    </div>`,
+                    iconSize: [24, 24]
+                });
+
+                L.marker([poi.latitude, poi.longitude], { icon })
+                    .addTo(map)
+                    .bindPopup(`<b>${poi.type}</b>`);
+            });
+        } catch (error) {
+            console.error("Erreur chargement POIs:", error);
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         // Conversion des coordonnées
         const parseCoords = (coordsStr) => {
@@ -223,7 +258,7 @@
         };
 
         // Initialisation de la carte
-        const map = L.map('map').setView(parseCoords(startCoords), 13);
+        map = L.map('map').setView(parseCoords(startCoords), 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         }).addTo(map);
@@ -282,6 +317,9 @@
             ).addTo(map);
         }
 
+        // Chargement des POIs
+        loadPois();
+
         // Bouton navigation
         document.getElementById('startTripBtn')?.addEventListener('click', function() {
             window.location.href = `/start-navigation?start=${encodeURIComponent(startCoords)}&end=${encodeURIComponent(endCoords)}`;
@@ -304,6 +342,10 @@
             .leaflet-popup-content {
                 font-family: 'Segoe UI', sans-serif;
                 font-size: 14px;
+            }
+            .poi-icon {
+                cursor: pointer;
+                filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));
             }
         `;
     document.head.appendChild(style);

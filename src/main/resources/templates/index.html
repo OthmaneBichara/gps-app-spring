@@ -191,15 +191,16 @@
         }
 
         .map-container {
-            margin-top: 2rem;
+            height: 400px;
+            width: 100%;
             border-radius: 12px;
             overflow: hidden;
             box-shadow: 0 4px 24px rgba(0,0,0,0.1);
-            height: 300px;
-            display: none;
+            margin-top: 1rem;
+            border: 1px solid #e9ecef;
         }
 
-        #miniMap, #navigationMap {
+        #mainMap {
             height: 100%;
             width: 100%;
         }
@@ -222,6 +223,68 @@
                 font-size: 1.5rem;
             }
         }
+        /* Styles POI */
+        .poi-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+        }
+
+        .poi-marker {
+            font-size: 24px;
+            cursor: move;
+        }
+
+        .poi-icon {
+            font-size: 20px;
+            text-align: center;
+            line-height: 30px;
+        }
+
+        #poiControls {
+            display: none;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .poi-temp-marker {
+            cursor: move;
+            filter: drop-shadow(0 0 5px rgba(0,0,0,0.3));
+            animation: pulse 0.5s ease-in-out;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        .alert {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: white;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .alert.success {
+            background-color: #4CAF50;
+        }
+
+        .alert.error {
+            background-color: #F44336;
+        }
+
+        @keyframes slideIn {
+            from { bottom: -50px; opacity: 0; }
+            to { bottom: 20px; opacity: 1; }
+        }
+
     </style>
 </head>
 <body>
@@ -261,59 +324,180 @@
                 </button>
             </div>
         </form>
-    </div>
 
-    <div class="map-container">
-        <div id="miniMap"></div>
-        <div id="navigationMap"></div>
+        <!-- Section POI - Déplacée en dehors de search-card -->
+        <div class="poi-section">
+            <h3 style="margin-bottom: 1rem; color: var(--primary);">
+                <i class="fas fa-map-pin"></i> Points d'intérêt
+            </h3>
+
+            <div id="poiControls" style="display: none; margin-bottom: 1rem;">
+                <select id="poiType" class="btn btn-secondary" style="margin-right: 0.5rem;">
+                    <option value="MAGASIN">🛒 Magasin</option>
+                    <option value="RADAR">🚨 Radar</option>
+                    <option value="LIEU">📍 Lieu</option>
+                </select>
+                <button id="savePoiBtn" class="btn btn-primary" style="margin-right: 0.5rem;">
+                    <i class="fas fa-save"></i> Enregistrer
+                </button>
+                <button id="cancelPoiBtn" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> Annuler
+                </button>
+            </div>
+
+            <div class="map-container" id="mainMapContainer">
+                <div id="mainMap"></div>
+            </div>
+        </div>
     </div>
 </main>
 
 
-
+<meta name="_csrf" th:content="${_csrf.token}"/>
+<meta name="_csrf_header" th:content="${_csrf.headerName}"/>
 <!-- Scripts JS -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/awesomplete/1.1.5/awesomplete.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
 
-
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Variables globales
-        let userMarker, routePolyline, watchId;
-        let miniMap = null;
-        let navigationMap = null;
-        const startTripBtn = document.getElementById('startTripBtn');
-        const spinner = document.getElementById('spinner');
-        const addressInput = document.getElementById('addressInput');
+    // Variables globales
+    let map, userMarker, routePolyline, watchId;
+    let poiMarkers = []; // Pour les marqueurs POI temporaires
+    let allPoiMarkers = []; // Pour tous les marqueurs POI chargés
+    const startTripBtn = document.getElementById('startTripBtn');
+    const spinner = document.getElementById('spinner');
+    const addressInput = document.getElementById('addressInput');
 
-        // 1. Géolocalisation initiale
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                position => {
-                    const coords = `${position.coords.longitude},${position.coords.latitude}`;
-                    document.getElementById('startCoords').value = coords;
-                    initMiniMap(position.coords);
-                },
-                error => {
-                    console.error("Erreur géoloc :", error);
-                    // Ne pas définir de position par défaut
-                    alert("Impossible d'obtenir votre position. Veuillez activer le GPS.");
-                    return;
+    // Fonction pour effacer les marqueurs POI temporaires
+    function clearPoiMarkers() {
+        poiMarkers.forEach(marker => {
+            if (marker && map.hasLayer(marker)) {
+                map.removeLayer(marker);
+            }
+        });
+        poiMarkers = [];
+    }
+
+
+    function getPoiIcon(type) {
+        const iconConfig = {
+            MAGASIN: { html: '🛒', color: '#4CAF50', size: 24 },
+            RADAR: { html: '🚨', color: '#F44336', size: 24 },
+            LIEU: { html: '📍', color: '#FFC107', size: 24 }
+        };
+
+        const config = iconConfig[type] || iconConfig.LIEU;
+
+        return L.divIcon({
+            html: `<div style="background:${config.color};
+                      width:${config.size}px;
+                      height:${config.size}px;
+                      border-radius:50%;
+                      display:flex;
+                      align-items:center;
+                      justify-content:center;
+                      color:white;
+                      border:2px solid white;
+                      box-shadow:0 0 5px rgba(0,0,0,0.3)">
+                  ${config.html}
+               </div>`,
+            className: 'custom-poi-icon',
+            iconSize: [config.size, config.size]
+        });
+    }
+
+    // Charge les POIs depuis le serveur
+    async function loadPois() {
+        try {
+
+            allPoiMarkers.forEach(marker => {
+                if (marker && map.hasLayer(marker)) {
+                    map.removeLayer(marker);  // Supprime les anciens marqueurs
                 }
-            );
-        } else {
-            document.getElementById('startCoords').value = "2.3522,48.8566";
-        }
+            });
+            allPoiMarkers = [];
 
-        // 2. Configuration Autocomplete
+
+            const response = await fetch('/pois');
+            if (!response.ok) throw new Error('Erreur réseau');
+
+            const pois = await response.json();
+            pois.forEach(poi => {
+                const marker = L.marker([poi.latitude, poi.longitude], {
+                    icon: getPoiIcon(poi.type)
+                }).addTo(map);
+
+                // Ajoute un popup avec bouton de suppression
+                marker.bindPopup(`
+                    <div style="text-align:center; padding:10px;">
+                        <b>${poi.type}</b><br>
+                        <button onclick="handleDeletePoi(${poi.id})"
+                                style="margin-top:8px; padding:5px 10px; background:#ff4444; color:white; border:none; border-radius:4px; cursor:pointer;">
+                            <i class="fas fa-trash"></i> Supprimer
+                        </button>
+                    </div>
+                `);
+
+                // Stocke l'ID pour référence ultérieure
+                marker._poiId = poi.id;
+                allPoiMarkers.push(marker);
+            });
+        } catch (error) {
+            console.error("Erreur chargement POIs:", error);
+            showAlert("Erreur lors du chargement des points", "error");
+        }
+    }
+
+    // Gère la suppression d'un POI
+    async function handleDeletePoi(id) {
+        try {
+            const response = await fetch(`/pois/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="_csrf"]').content
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+
+            // Supprime le marqueur de la carte
+            const markerIndex = allPoiMarkers.findIndex(m => m._poiId === id);
+            if (markerIndex !== -1) {
+                map.removeLayer(allPoiMarkers[markerIndex]);
+                allPoiMarkers.splice(markerIndex, 1);
+            }
+
+            showAlert("Point supprimé avec succès", "success");
+            map.closePopup();
+        } catch (error) {
+            console.error("Erreur suppression POI:", error);
+            showAlert(`Erreur: ${error.message}`, "error");
+        }
+    }
+
+    // Affiche une notification
+    function showAlert(message, type) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert ${type}`;
+        alertDiv.textContent = message;
+        document.body.appendChild(alertDiv);
+        setTimeout(() => alertDiv.remove(), 3000);
+    }
+
+    // Initialisation de l'application
+    document.addEventListener('DOMContentLoaded', function() {
+        // 1. Configuration de l'autocomplétion des adresses
         const awesomplete = new Awesomplete(addressInput, {
             minChars: 3,
             maxItems: 5,
             autoFirst: true
         });
 
-        // Solution optimisée pour la sélection d'adresse
+        // 2. Gestion de la sélection d'adresse
         let selectedAddressValid = false;
 
         addressInput.addEventListener('awesomplete-select', function(e) {
@@ -328,6 +512,94 @@
             }
         });
 
+        // 3. Initialisation de la carte et géolocalisation
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    const coords = `${position.coords.longitude},${position.coords.latitude}`;
+                    document.getElementById('startCoords').value = coords;
+                    initMap(position.coords);
+                    loadPois();
+                },
+                error => {
+                    console.error("Erreur géolocalisation:", error);
+                    document.getElementById('startCoords').value = "2.3522,48.8566";
+                    initMap({ latitude: 48.8566, longitude: 2.3522 });
+                    loadPois();
+                }
+            );
+        } else {
+            document.getElementById('startCoords').value = "2.3522,48.8566";
+            initMap({ latitude: 48.8566, longitude: 2.3522 });
+            loadPois();
+        }
+
+        // 4. Initialisation de la carte
+        function initMap(coords) {
+            map = L.map('mainMap').setView([coords.latitude, coords.longitude], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+            // Gestion du clic sur la carte pour ajouter des POIs
+            map.on('click', function(e) {
+                document.getElementById('poiControls').style.display = 'flex';
+                clearPoiMarkers();
+
+                const marker = L.marker(e.latlng, {
+                    draggable: true,
+                    icon: L.divIcon({
+                        className: 'poi-temp-marker',
+                        html: '📍',
+                        iconSize: [30, 30]
+                    })
+                }).addTo(map);
+
+                poiMarkers.push(marker);
+            });
+        }
+
+        // 5. Gestion des POIs
+        document.getElementById('cancelPoiBtn')?.addEventListener('click', () => {
+            document.getElementById('poiControls').style.display = 'none';
+            clearPoiMarkers();
+        });
+
+        document.getElementById('savePoiBtn')?.addEventListener('click', async function() {
+            if (poiMarkers.length === 0) return;
+
+            const type = document.getElementById('poiType').value;
+            const latlng = poiMarkers[0].getLatLng();
+
+            try {
+                const response = await fetch('/pois', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        type: type,
+                        latitude: latlng.lat,
+                        longitude: latlng.lng,
+                        _csrf: document.querySelector('meta[name="_csrf"]').content
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(await response.text());
+                }
+
+                document.getElementById('poiControls').style.display = 'none';
+                clearPoiMarkers();
+                loadPois();
+                showAlert("Point enregistré avec succès", "success");
+
+            } catch (error) {
+                console.error("Erreur enregistrement POI:", error);
+                showAlert(`Erreur: ${error.message}`, "error");
+            }
+        });
+
+        // 6. Gestion de la recherche d'adresse
         async function handleAddressSelection(address) {
             if (!address) return;
 
@@ -343,21 +615,22 @@
                 if (data[0]) {
                     const destCoords = `${data[0].lon},${data[0].lat}`;
                     document.getElementById('destinationCoords').value = destCoords;
-
-                    // Affiche définitivement le bouton
                     startTripBtn.style.display = 'block';
-                    showMiniMap(data[0].lat, data[0].lon);
+
+                    // Centrer la carte sur la destination
+                    map.setView([data[0].lat, data[0].lon], 15);
                 } else {
                     alert("Adresse introuvable");
                 }
             } catch (error) {
                 console.error("Erreur:", error);
+                alert("Erreur lors de la recherche de l'adresse");
             } finally {
                 spinner.style.display = 'none';
             }
         }
 
-        // Gestion des suggestions
+        // 7. Gestion des suggestions d'adresse
         addressInput.addEventListener('input', function() {
             if (this.value.length < 3) {
                 awesomplete.list = [];
@@ -375,67 +648,17 @@
         });
 
 
-        startTripBtn.addEventListener('click', startNavigation);
-
-        function initMiniMap(coords) {
-            miniMap = L.map('miniMap').setView([coords.latitude, coords.longitude], 13);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(miniMap);
-            L.marker([coords.latitude, coords.longitude])
-                .addTo(miniMap)
-                .bindPopup("Vous êtes ici");
-        }
-
-        function showMiniMap(lat, lon) {
-            if (!miniMap) {
-                miniMap = L.map('miniMap').setView([lat, lon], 15);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(miniMap);
-            } else {
-                miniMap.setView([lat, lon], 15);
-            }
-
-            // Clear previous markers
-            miniMap.eachLayer(layer => {
-                if (layer instanceof L.Marker) miniMap.removeLayer(layer);
-            });
-
-            L.marker([lat, lon])
-                .addTo(miniMap)
-                .bindPopup("Destination");
-
-            document.getElementById('miniMap').style.display = 'block';
-        }
-
         function startNavigation() {
             const startCoords = document.getElementById('startCoords').value;
             const destCoords = document.getElementById('destinationCoords').value;
             window.location.href = `/start-navigation?start=${encodeURIComponent(startCoords)}&end=${encodeURIComponent(destCoords)}`;
         }
 
-        // Nettoyage
+
         window.addEventListener('beforeunload', () => {
             if (watchId) navigator.geolocation.clearWatch(watchId);
         });
     });
-
-    async function calculateAndDisplayRoute(startCoords, destCoords) {
-        try {
-            const response = await fetch(`/calculateRoute?start=${startCoords}&end=${destCoords}`);
-            const data = await response.json();
-
-            if (data.routeGeometry) {
-                const routeData = JSON.parse(data.routeGeometry);
-                if (routePolyline) miniMap.removeLayer(routePolyline);
-
-                routePolyline = L.geoJSON(routeData, {
-                    style: { color: '#3388ff', weight: 5 }
-                }).addTo(miniMap);
-
-                miniMap.fitBounds(routePolyline.getBounds());
-            }
-        } catch (error) {
-            console.error("Erreur calcul itinéraire:", error);
-        }
-    }
 </script>
 
 </body>
